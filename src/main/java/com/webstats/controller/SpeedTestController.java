@@ -10,13 +10,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestMethod;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @RestController
-@RequestMapping("/speedtest")
+@RequestMapping("/api/speedtest")
 @CrossOrigin(origins = "*")
 public class SpeedTestController {
     
@@ -24,14 +25,41 @@ public class SpeedTestController {
     private SpeedTestService speedTestService;
     
     @PostMapping("/start")
-    public CompletableFuture<ResponseEntity<SpeedTestResponseDto>> startSpeedTest(
-            @Valid @RequestBody SpeedTestRequestDto request,
+    public ResponseEntity<?> startSpeedTest(
+            @RequestBody(required = false) SpeedTestRequestDto request,
             @RequestParam String userId,
             HttpServletRequest httpRequest) {
-        
-        return speedTestService.initiateSpeedTest(request, userId, httpRequest)
-                .thenApply(response -> ResponseEntity.ok(response))
-                .exceptionally(throwable -> ResponseEntity.badRequest().build());
+
+        System.out.println("\n=== POST /api/speedtest/start ===");
+        System.out.println("Method: " + httpRequest.getMethod());
+        System.out.println("Content-Type: " + httpRequest.getContentType());
+        System.out.println("UserId: " + userId);
+        System.out.println("Request body: " + (request != null ? request.toString() : "null"));
+        System.out.println("Headers:");
+        httpRequest.getHeaderNames().asIterator().forEachRemaining(header ->
+            System.out.println("  " + header + ": " + httpRequest.getHeader(header))
+        );
+
+        try {
+            if (request == null) {
+                return ResponseEntity.badRequest().body("Request body is required");
+            }
+
+            // Create mock response
+            SpeedTestResponseDto mockResponse = new SpeedTestResponseDto();
+            return ResponseEntity.ok(mockResponse);
+
+        } catch (Exception e) {
+            System.err.println("Error in startSpeedTest: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+    @RequestMapping(value = "/start", method = RequestMethod.OPTIONS)
+    public ResponseEntity<?> handleOptions() {
+        System.out.println("Received OPTIONS /api/speedtest/start");
+        return ResponseEntity.ok().build();
     }
     
     @GetMapping("/status/{sessionId}")
@@ -74,5 +102,10 @@ public class SpeedTestController {
     @GetMapping("/health")
     public ResponseEntity<String> healthCheck() {
         return ResponseEntity.ok("Speed Test Service is running");
+    }
+    
+    @GetMapping("/test")
+    public ResponseEntity<String> testEndpoint() {
+        return ResponseEntity.ok("Test endpoint working - CORS should allow this");
     }
 }

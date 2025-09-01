@@ -13,8 +13,6 @@ spring:
 
 server:
   port: 8080
-  servlet:
-    context-path: /api
 
 management:
   endpoints:
@@ -29,3 +27,6 @@ logging:
   level:
     com.webstats: DEBUG
     org.springframework.data.mongodb: DEBUG
+    org.springframework.web: DEBUG
+    org.springframework.web.servlet.DispatcherServlet: DEBUG
+    org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping: TRACE

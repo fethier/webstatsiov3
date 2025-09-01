@@ -18,8 +18,8 @@ public class SpeedTestRequestDto {
     @Max(value = 10, message = "Number of runs cannot exceed 10")
     private Integer numberOfRuns = 3;
     
-    @Min(value = 1, message = "Concurrent connections must be at least 1")
-    @Max(value = 8, message = "Concurrent connections cannot exceed 8")
+//    @Min(value = 1, message = "Concurrent connections must be at least 1")
+//    @Max(value = 8, message = "Concurrent connections cannot exceed 8")
     private Integer concurrentConnections = 4;
     
     private Double testFileSizeMb;
@@ -45,4 +45,16 @@ public class SpeedTestRequestDto {
     
     public String getPreferredServerId() { return preferredServerId; }
     public void setPreferredServerId(String preferredServerId) { this.preferredServerId = preferredServerId; }
+    
+    @Override
+    public String toString() {
+        return "SpeedTestRequestDto{" +
+                "testType=" + testType +
+                ", testDurationSeconds=" + testDurationSeconds +
+                ", numberOfRuns=" + numberOfRuns +
+                ", concurrentConnections=" + concurrentConnections +
+                ", testFileSizeMb=" + testFileSizeMb +
+                ", preferredServerId='" + preferredServerId + '\'' +
+                '}';
+    }
 }
