@@ -14,3 +14,4 @@ The goal is to make a speed test web application that can give the users instant
 * upload speed
 
 Test results are saved in the database
+2

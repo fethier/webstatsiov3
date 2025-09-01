@@ -1,0 +1,251 @@
+# WebStats.io - Architectural Decisions Documentation
+
+## Project Overview
+WebStats.io is a comprehensive speed test web application built with Java Spring Boot backend and Angular frontend, designed to provide professional network performance analysis with statistical reporting.
+
+## Core Architecture Decisions
+
+### 1. Backend Technology Stack
+
+**Java Spring Boot 3.2.0 with Java 17**
+- **Decision**: Selected Spring Boot for rapid development and enterprise-grade features
+- **Rationale**: 
+  - Mature ecosystem with excellent documentation
+  - Built-in security, monitoring, and testing capabilities
+  - Strong MongoDB integration through Spring Data
+  - Robust REST API development framework
+  - Easy deployment and scaling options
+
+**MongoDB as Primary Database**
+- **Decision**: NoSQL document database for flexible schema and horizontal scaling
+- **Rationale**:
+  - Speed test data has varying structures (different metrics per test type)
+  - Time-series data patterns fit well with document storage
+  - Easy to add new metrics without schema migrations
+  - Excellent aggregation capabilities for analytics
+  - Geographic distribution support for global deployment
+
+### 2. Database Schema Design
+
+**Entity Structure**:
+1. **Organization**: Multi-tenant support with subscription plans and usage limits
+2. **User**: User management with role-based access control
+3. **SpeedTestSession**: Active session tracking for real-time progress monitoring
+4. **SpeedTestResult**: Comprehensive test results with nested metrics and statistical summaries
+
+**Key Design Decisions**:
+- **Embedded Documents**: Used nested classes for metrics to reduce database queries
+- **Statistical Aggregation**: Pre-calculated statistics stored with results for fast retrieval
+- **Raw Measurements**: Detailed measurement data preserved for advanced analytics
+- **Flexible Client Info**: Support for geolocation and connection metadata
+
+### 3. Statistical Analysis Implementation
+
+**Apache Commons Math3**
+- **Decision**: Professional mathematical library for statistical calculations
+- **Features Implemented**:
+  - Multiple runs with median/percentile reporting (95th, 99th percentiles)
+  - Standard deviation and confidence intervals
+  - Outlier detection using IQR method
+  - Stability scoring based on coefficient of variation
+  - Jitter calculation for latency measurements
+
+**Statistical Metrics Captured**:
+- Mean, Median, Min, Max values
+- 95th and 99th percentiles for performance SLA reporting
+- Standard deviation for consistency measurement
+- Packet loss percentage and jitter for latency quality
+
+### 4. Latency Measurement Strategy
+
+**Multi-faceted Latency Testing**:
+- **DNS Lookup Time**: Domain resolution performance
+- **TCP Connect Time**: Network layer connectivity speed
+- **SSL Handshake Time**: Security protocol overhead (when applicable)
+- **First Byte Time**: Application layer response time
+- **Ping Measurements**: Multiple ICMP-style tests with jitter calculation
+- **Packet Loss Detection**: Network reliability measurement
+
+**Implementation Details**:
+- Multiple measurement runs (default: 10) for statistical accuracy
+- 100ms intervals between pings to avoid network congestion
+- Timeout handling (5 seconds default) for unreliable connections
+- Asynchronous execution using CompletableFuture for performance
+
+### 5. Frontend Technology Choices
+
+**Angular 17 with Standalone Components**
+- **Decision**: Modern Angular with latest architectural patterns
+- **Rationale**:
+  - Standalone components reduce bundle size and improve tree-shaking
+  - TypeScript provides type safety for complex data structures
+  - Excellent tooling and development experience
+  - Strong ecosystem for charting and UI components
+
+**ECharts for Data Visualization**
+- **Decision**: Selected over Chart.js, D3, and Highcharts after comprehensive analysis
+- **Rationale**:
+  - **Performance**: Superior handling of large time-series datasets
+  - **Features**: Rich interaction capabilities (zoom, pan, data brushing)
+  - **TypeScript Support**: Full type definitions available
+  - **Customization**: Highly configurable for professional dashboards
+  - **Mobile Support**: Responsive charts work well on all devices
+  - **Open Source**: No licensing costs unlike Highcharts
+
+**Bootstrap 5 for UI Framework**
+- **Decision**: CSS framework for rapid UI development
+- **Benefits**: Responsive design, accessibility features, consistent styling
+
+### 6. Service Layer Architecture
+
+**SpeedTestService - Core Business Logic**:
+- Asynchronous test execution using CompletableFuture
+- Session-based progress tracking with real-time status updates
+- Configurable test parameters (duration, runs, connections)
+- Statistical analysis integration
+- Result aggregation and time-series data preparation
+
+**Separation of Concerns**:
+- **Controllers**: REST API endpoints and request/response handling
+- **Services**: Business logic and orchestration
+- **Repositories**: Data access layer with MongoDB queries
+- **DTOs**: Clean data transfer without exposing internal models
+
+### 7. Real-time Progress Tracking
+
+**Session-Based Architecture**:
+- **SpeedTestSession**: Tracks active tests with progress percentage
+- **Phase Tracking**: Distinct phases (Latency → Download → Upload → Analysis)
+- **Polling Strategy**: Client polls every second for updates
+- **Status Management**: Clear state machine (Initializing → Running → Completed/Failed)
+
+**Benefits**:
+- User feedback during long-running tests
+- Ability to cancel tests in progress
+- Error handling and recovery
+- Multiple concurrent user support
+
+### 8. API Design Philosophy
+
+**RESTful Design Principles**:
+- Resource-based URLs (`/speedtest/start`, `/speedtest/status/{id}`)
+- HTTP status codes for proper error handling
+- JSON request/response format
+- CORS support for frontend integration
+- Validation using Bean Validation (JSR-303)
+
+**Async Operation Support**:
+- Test initiation returns session ID immediately
+- Status polling endpoint for progress monitoring
+- Separate endpoints for historical data and analytics
+
+### 9. Data Analytics and Reporting
+
+**Time-Series Data Structure**:
+- Optimized for charting with timestamp-value pairs
+- Separate series for download, upload, and latency metrics
+- Efficient aggregation queries in MongoDB
+- Support for date range filtering
+
+**Performance Insights**:
+- Statistical summaries for trend analysis
+- Percentile reporting for SLA monitoring
+- Historical comparisons and baseline establishment
+- Geographic performance analysis (when location data available)
+
+### 10. Security Considerations
+
+**Data Protection**:
+- No sensitive personal information stored beyond basic user metadata
+- IP addresses anonymized for privacy
+- Secure HTTP headers and CORS configuration
+- Input validation on all endpoints
+
+**Performance Security**:
+- Rate limiting through organization subscription plans
+- Concurrent test limitations to prevent abuse
+- Resource timeout configurations
+- Error message sanitization
+
+### 11. Scalability Architecture
+
+**Horizontal Scaling Support**:
+- Stateless service design
+- MongoDB sharding support for data partitioning
+- Async processing suitable for load balancing
+- CDN-ready frontend assets
+
+**Performance Optimizations**:
+- Connection pooling for database access
+- Efficient aggregation queries
+- Client-side caching of static configuration
+- Lazy loading in frontend components
+
+### 12. Development and Maintenance Decisions
+
+**Code Organization**:
+- Feature-based package structure
+- Clear separation between layers
+- Comprehensive error handling
+- Logging for debugging and monitoring
+
+**Testing Strategy**:
+- Unit tests for statistical calculations
+- Integration tests for API endpoints
+- Frontend component testing setup
+- Mock services for development
+
+**Documentation**:
+- Comprehensive API documentation
+- Code comments for complex algorithms
+- User guide for frontend components
+- Deployment instructions
+
+## Technology Comparison and Justification
+
+### Backend Framework Comparison
+| Framework | Pros | Cons | Decision |
+|-----------|------|------|----------|
+| Spring Boot | Mature, comprehensive, great MongoDB support | Learning curve, heavier | **Selected** |
+| Node.js/Express | Fast development, JavaScript everywhere | Less mature for enterprise | Rejected |
+| Django/FastAPI | Python ecosystem, great for data science | Performance concerns | Rejected |
+
+### Database Comparison
+| Database | Pros | Cons | Decision |
+|----------|------|------|----------|
+| MongoDB | Flexible schema, great aggregation, time-series | Eventual consistency | **Selected** |
+| PostgreSQL | ACID compliance, JSON support | Schema rigidity | Rejected |
+| InfluxDB | Time-series optimized | Limited query flexibility | Rejected |
+
+### Frontend Charting Library Comparison
+| Library | Performance | Features | TypeScript | License | Decision |
+|---------|-------------|----------|------------|---------|----------|
+| ECharts | Excellent | Very High | Full Support | Apache | **Selected** |
+| Chart.js | Good | Medium | Good Support | MIT | Rejected |
+| Highcharts | Good | High | Full Support | Commercial | Rejected |
+| D3.js | Excellent | Unlimited | Good Support | MIT | Too Complex |
+
+## Future Enhancements
+
+### Phase 2 Features:
+1. **Real-time WebRTC-based speed testing** for more accurate measurements
+2. **Geographic server selection** for localized testing
+3. **Advanced alerting** when performance degrades
+4. **API for third-party integrations**
+5. **Mobile applications** for iOS and Android
+6. **Enterprise dashboard** with multi-organization analytics
+7. **Machine learning** for performance prediction and anomaly detection
+
+### Technical Improvements:
+1. **Microservices architecture** for better scalability
+2. **Event-driven architecture** with message queues
+3. **Advanced caching** with Redis
+4. **Container deployment** with Docker and Kubernetes
+5. **Performance monitoring** with APM tools
+6. **Load testing** infrastructure for scale validation
+
+## Conclusion
+
+This architecture provides a solid foundation for a professional speed testing application with room for future growth. The technology choices balance performance, maintainability, and development velocity while providing enterprise-grade features for statistical analysis and reporting.
+
+The modular design allows for independent scaling of components, and the modern tech stack ensures long-term maintainability and developer productivity.

@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: webstats-io
+  data:
+    mongodb:
+      host: localhost
+      port: 27017
+      database: webstats
+  security:
+    user:
+      name: admin
+      password: admin
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.webstats: DEBUG
+    org.springframework.data.mongodb: DEBUG
