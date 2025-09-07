@@ -112,15 +112,15 @@ export class SpeedTestService {
   }
 
   getUserHistory(limit: number = 10): Observable<HistoryItem[]> {
+    // For anonymous users, don't send userId parameter - server will default to 'anonymous'
     const params = new HttpParams()
-      .set('userId', this.currentUserId)
       .set('limit', limit.toString());
     return this.http.get<HistoryItem[]>(`${this.baseUrl}/history`, { params });
   }
 
   getTimeSeriesData(startDate: string, endDate: string): Observable<TimeSeriesData> {
+    // For anonymous users, don't send userId parameter - server will default to 'anonymous'
     const params = new HttpParams()
-      .set('userId', this.currentUserId)
       .set('startDate', startDate)
       .set('endDate', endDate);
     return this.http.get<TimeSeriesData>(`${this.baseUrl}/timeseries`, { params });

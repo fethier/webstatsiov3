@@ -1,13 +1,14 @@
 import { Component, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterModule } from '@angular/router';
 import { SpeedTestService, SpeedTestRequest, SpeedTestResponse } from '../../services/speed-test.service';
 import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-speed-test',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterModule],
   template: `
     <div class="speed-test-container">
       <div class="row">
