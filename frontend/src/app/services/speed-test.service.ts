@@ -92,8 +92,9 @@ export class SpeedTestService {
   constructor(private http: HttpClient) {}
 
   startSpeedTest(request: SpeedTestRequest): Observable<SpeedTestResponse> {
-    const params = new HttpParams().set('userId', this.currentUserId);
-    return this.http.post<SpeedTestResponse>(`${this.baseUrl}/start`, request, { params });
+    // For anonymous usage, don't send userId parameter
+    // const params = new HttpParams().set('userId', this.currentUserId);
+    return this.http.post<SpeedTestResponse>(`${this.baseUrl}/start`, request);
   }
 
   getTestStatus(sessionId: string): Observable<SpeedTestResponse> {

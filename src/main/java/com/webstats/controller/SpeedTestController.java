@@ -27,13 +27,18 @@ public class SpeedTestController {
     @PostMapping("/start")
     public ResponseEntity<?> startSpeedTest(
             @RequestBody(required = false) SpeedTestRequestDto request,
-            @RequestParam String userId,
+            @RequestParam(required = false) String userId,
             HttpServletRequest httpRequest) {
+
+        // Use anonymous if no userId provided
+        if (userId == null || userId.isEmpty()) {
+            userId = "anonymous";
+        }
 
         System.out.println("\n=== POST /api/speedtest/start ===");
         System.out.println("Method: " + httpRequest.getMethod());
         System.out.println("Content-Type: " + httpRequest.getContentType());
-        System.out.println("UserId: " + userId);
+        System.out.println("UserId: " + userId + (userId.equals("anonymous") ? " (anonymous user)" : ""));
         System.out.println("Request body: " + (request != null ? request.toString() : "null"));
         System.out.println("Headers:");
         httpRequest.getHeaderNames().asIterator().forEachRemaining(header ->
@@ -45,9 +50,9 @@ public class SpeedTestController {
                 return ResponseEntity.badRequest().body("Request body is required");
             }
 
-            // Create mock response
-            SpeedTestResponseDto mockResponse = new SpeedTestResponseDto();
-            return ResponseEntity.ok(mockResponse);
+            // Actually call the service to initiate speed test
+            SpeedTestResponseDto response = speedTestService.initiateSpeedTest(request, userId, httpRequest).get();
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             System.err.println("Error in startSpeedTest: " + e.getMessage());
@@ -74,10 +79,13 @@ public class SpeedTestController {
     
     @GetMapping("/history")
     public ResponseEntity<List<SpeedTestHistoryDto>> getUserHistory(
-            @RequestParam String userId,
+            @RequestParam(required = false) String userId,
             @RequestParam(defaultValue = "10") int limit) {
         
         try {
+            if (userId == null || userId.isEmpty()) {
+                userId = "anonymous";
+            }
             List<SpeedTestHistoryDto> history = speedTestService.getUserHistory(userId, limit);
             return ResponseEntity.ok(history);
         } catch (Exception e) {
@@ -87,11 +95,14 @@ public class SpeedTestController {
     
     @GetMapping("/timeseries")
     public ResponseEntity<SpeedTestHistoryDto.TimeSeriesData> getTimeSeriesData(
-            @RequestParam String userId,
+            @RequestParam(required = false) String userId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
         
         try {
+            if (userId == null || userId.isEmpty()) {
+                userId = "anonymous";
+            }
             SpeedTestHistoryDto.TimeSeriesData data = speedTestService.getTimeSeriesData(userId, startDate, endDate);
             return ResponseEntity.ok(data);
         } catch (Exception e) {
@@ -107,5 +118,24 @@ public class SpeedTestController {
     @GetMapping("/test")
     public ResponseEntity<String> testEndpoint() {
         return ResponseEntity.ok("Test endpoint working - CORS should allow this");
+    }
+    
+    @PostMapping("/upload")
+    public ResponseEntity<String> handleUploadTest(
+            HttpServletRequest request,
+            @RequestBody(required = false) byte[] data) {
+        
+        try {
+            // Simply consume the uploaded data for speed testing
+            int bytesReceived = (data != null) ? data.length : 0;
+            
+            // Add artificial processing delay to simulate real server processing
+            Thread.sleep(50);
+            
+            return ResponseEntity.ok("Upload test completed. Received " + bytesReceived + " bytes");
+            
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Upload test failed: " + e.getMessage());
+        }
     }
 }

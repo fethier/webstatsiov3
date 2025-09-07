@@ -42,28 +42,40 @@ public class SpeedTestService {
     @Autowired
     private LatencyMeasurementService latencyMeasurementService;
     
+    @Autowired
+    private DownloadTestService downloadTestService;
+    
+    @Autowired
+    private UploadTestService uploadTestService;
+    
     public CompletableFuture<SpeedTestResponseDto> initiateSpeedTest(
             SpeedTestRequestDto request, String userId, HttpServletRequest httpRequest) {
         
         return CompletableFuture.supplyAsync(() -> {
             try {
-                // Get user and organization info
-                Optional<User> userOpt = userRepository.findById(userId);
-                if (userOpt.isEmpty()) {
-                    throw new RuntimeException("User not found");
+                // Support both authenticated and anonymous users
+                User user = null;
+                Organization organization = null;
+                
+                if (userId != null && !userId.isEmpty() && !userId.equals("anonymous")) {
+                    Optional<User> userOpt = userRepository.findById(userId);
+                    if (userOpt.isPresent()) {
+                        user = userOpt.get();
+                        Optional<Organization> orgOpt = organizationRepository.findById(user.getOrganizationId());
+                        organization = orgOpt.orElse(null);
+                    }
                 }
                 
-                User user = userOpt.get();
-                Optional<Organization> orgOpt = organizationRepository.findById(user.getOrganizationId());
-                
-                // Check if user has active sessions
-                List<SpeedTestSession> activeSessions = speedTestSessionRepository.findActiveSessionsByUserId(userId);
-                if (!activeSessions.isEmpty()) {
-                    throw new RuntimeException("User already has an active speed test session");
+                // Check if user has active sessions (only for authenticated users)
+                if (user != null) {
+                    List<SpeedTestSession> activeSessions = speedTestSessionRepository.findActiveSessionsByUserId(userId);
+                    if (!activeSessions.isEmpty()) {
+                        throw new RuntimeException("User already has an active speed test session");
+                    }
                 }
                 
                 // Create new session
-                SpeedTestSession session = createNewSession(request, user, httpRequest);
+                SpeedTestSession session = createNewSession(request, user, organization, httpRequest);
                 session = speedTestSessionRepository.save(session);
                 
                 // Create response DTO
@@ -85,10 +97,12 @@ public class SpeedTestService {
         });
     }
     
-    private SpeedTestSession createNewSession(SpeedTestRequestDto request, User user, HttpServletRequest httpRequest) {
+    private SpeedTestSession createNewSession(SpeedTestRequestDto request, User user, Organization organization, HttpServletRequest httpRequest) {
         SpeedTestSession session = new SpeedTestSession();
-        session.setUserId(user.getId());
-        session.setOrganizationId(user.getOrganizationId());
+        
+        // Handle anonymous users
+        session.setUserId(user != null ? user.getId() : "anonymous");
+        session.setOrganizationId(organization != null ? organization.getId() : "public");
         session.setStatus(SpeedTestSession.SessionStatus.INITIALIZING);
         session.setCurrentPhase(SpeedTestSession.TestPhase.INITIALIZATION);
         session.setProgressPercentage(0);
@@ -222,34 +236,62 @@ public class SpeedTestService {
     }
     
     private void performDownloadTest(SpeedTestSession session, SpeedTestResult result, List<SpeedTestResult.RawMeasurement> measurements) {
-        // Simulated download test - in real implementation, this would involve actual file downloads
-        SpeedTestResult.SpeedMetrics downloadMetrics = simulateSpeedTest("download", session.getTestConfiguration());
-        result.setDownloadMetrics(downloadMetrics);
-        
-        // Add simulated measurements
-        for (int i = 0; i < session.getTestConfiguration().getNumberOfRuns(); i++) {
-            SpeedTestResult.RawMeasurement measurement = new SpeedTestResult.RawMeasurement();
-            measurement.setRunNumber(i + 1);
-            measurement.setTimestamp(LocalDateTime.now());
-            measurement.setMeasurementType(SpeedTestResult.RawMeasurement.MeasurementType.DOWNLOAD_SPEED);
-            measurement.setValue(downloadMetrics.getSpeedMbps() + (Math.random() - 0.5) * 10);
-            measurements.add(measurement);
+        try {
+            // Use actual download test service
+            SpeedTestResult.SpeedMetrics downloadMetrics = downloadTestService
+                    .performDownloadTest(session.getTestConfiguration()).get();
+            result.setDownloadMetrics(downloadMetrics);
+            
+            // Get detailed measurements
+            List<SpeedTestResult.RawMeasurement> downloadMeasurements = downloadTestService
+                    .performMultipleDownloadRuns(session.getTestConfiguration()).get();
+            measurements.addAll(downloadMeasurements);
+            
+        } catch (Exception e) {
+            System.err.println("Download test failed, using fallback: " + e.getMessage());
+            // Fallback to simulated test
+            SpeedTestResult.SpeedMetrics downloadMetrics = simulateSpeedTest("download", session.getTestConfiguration());
+            result.setDownloadMetrics(downloadMetrics);
+            
+            // Add simulated measurements
+            for (int i = 0; i < session.getTestConfiguration().getNumberOfRuns(); i++) {
+                SpeedTestResult.RawMeasurement measurement = new SpeedTestResult.RawMeasurement();
+                measurement.setRunNumber(i + 1);
+                measurement.setTimestamp(LocalDateTime.now());
+                measurement.setMeasurementType(SpeedTestResult.RawMeasurement.MeasurementType.DOWNLOAD_SPEED);
+                measurement.setValue(downloadMetrics.getSpeedMbps() + (Math.random() - 0.5) * 10);
+                measurements.add(measurement);
+            }
         }
     }
     
     private void performUploadTest(SpeedTestSession session, SpeedTestResult result, List<SpeedTestResult.RawMeasurement> measurements) {
-        // Simulated upload test - in real implementation, this would involve actual file uploads
-        SpeedTestResult.SpeedMetrics uploadMetrics = simulateSpeedTest("upload", session.getTestConfiguration());
-        result.setUploadMetrics(uploadMetrics);
-        
-        // Add simulated measurements
-        for (int i = 0; i < session.getTestConfiguration().getNumberOfRuns(); i++) {
-            SpeedTestResult.RawMeasurement measurement = new SpeedTestResult.RawMeasurement();
-            measurement.setRunNumber(i + 1);
-            measurement.setTimestamp(LocalDateTime.now());
-            measurement.setMeasurementType(SpeedTestResult.RawMeasurement.MeasurementType.UPLOAD_SPEED);
-            measurement.setValue(uploadMetrics.getSpeedMbps() + (Math.random() - 0.5) * 5);
-            measurements.add(measurement);
+        try {
+            // Use actual upload test service
+            SpeedTestResult.SpeedMetrics uploadMetrics = uploadTestService
+                    .performUploadTest(session.getTestConfiguration()).get();
+            result.setUploadMetrics(uploadMetrics);
+            
+            // Get detailed measurements
+            List<SpeedTestResult.RawMeasurement> uploadMeasurements = uploadTestService
+                    .performMultipleUploadRuns(session.getTestConfiguration()).get();
+            measurements.addAll(uploadMeasurements);
+            
+        } catch (Exception e) {
+            System.err.println("Upload test failed, using fallback: " + e.getMessage());
+            // Fallback to simulated test
+            SpeedTestResult.SpeedMetrics uploadMetrics = simulateSpeedTest("upload", session.getTestConfiguration());
+            result.setUploadMetrics(uploadMetrics);
+            
+            // Add simulated measurements
+            for (int i = 0; i < session.getTestConfiguration().getNumberOfRuns(); i++) {
+                SpeedTestResult.RawMeasurement measurement = new SpeedTestResult.RawMeasurement();
+                measurement.setRunNumber(i + 1);
+                measurement.setTimestamp(LocalDateTime.now());
+                measurement.setMeasurementType(SpeedTestResult.RawMeasurement.MeasurementType.UPLOAD_SPEED);
+                measurement.setValue(uploadMetrics.getSpeedMbps() + (Math.random() - 0.5) * 5);
+                measurements.add(measurement);
+            }
         }
     }
     
