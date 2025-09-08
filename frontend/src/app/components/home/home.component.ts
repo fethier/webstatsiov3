@@ -57,6 +57,7 @@ import { RouterModule } from '@angular/router';
         <div class="d-flex justify-content-center gap-3">
           <button class="btn btn-primary" routerLink="/test">Run Speed Test</button>
           <button class="btn btn-outline-secondary" routerLink="/history">View History</button>
+          <button class="btn btn-outline-info" routerLink="/analytics">View Analytics</button>
         </div>
       </div>
     </div>

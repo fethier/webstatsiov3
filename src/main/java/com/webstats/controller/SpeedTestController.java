@@ -138,4 +138,20 @@ public class SpeedTestController {
             return ResponseEntity.badRequest().body("Upload test failed: " + e.getMessage());
         }
     }
+    
+    @GetMapping("/analytics/summary")
+    public ResponseEntity<Object> getAnalyticsSummary(@RequestParam(required = false) String userId) {
+        try {
+            if (userId == null || userId.isEmpty()) {
+                userId = "anonymous";
+            }
+            
+            // Get basic analytics data for the user
+            Object summary = speedTestService.getAnalyticsSummary(userId);
+            return ResponseEntity.ok(summary);
+            
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to get analytics summary: " + e.getMessage());
+        }
+    }
 }

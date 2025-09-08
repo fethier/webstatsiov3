@@ -508,4 +508,74 @@ public class SpeedTestService {
         
         return request.getRemoteAddr();
     }
+    
+    public Object getAnalyticsSummary(String userId) {
+        try {
+            List<SpeedTestResult> allResults = speedTestResultRepository.findByUserId(userId);
+            
+            if (allResults.isEmpty()) {
+                return Map.of(
+                    "totalTests", 0,
+                    "message", "No test data available yet. Run some speed tests to see analytics."
+                );
+            }
+            
+            // Calculate summary statistics
+            List<Double> downloadSpeeds = allResults.stream()
+                .filter(r -> r.getDownloadMetrics() != null)
+                .map(r -> r.getDownloadMetrics().getSpeedMbps())
+                .collect(Collectors.toList());
+            
+            List<Double> uploadSpeeds = allResults.stream()
+                .filter(r -> r.getUploadMetrics() != null)
+                .map(r -> r.getUploadMetrics().getSpeedMbps())
+                .collect(Collectors.toList());
+            
+            List<Double> latencies = allResults.stream()
+                .filter(r -> r.getLatencyMetrics() != null)
+                .map(r -> r.getLatencyMetrics().getPingMs())
+                .collect(Collectors.toList());
+            
+            return Map.of(
+                "totalTests", allResults.size(),
+                "downloadStats", calculateBasicStats(downloadSpeeds, "Mbps"),
+                "uploadStats", calculateBasicStats(uploadSpeeds, "Mbps"),
+                "latencyStats", calculateBasicStats(latencies, "ms"),
+                "dateRange", Map.of(
+                    "firstTest", allResults.get(allResults.size() - 1).getTestTimestamp(),
+                    "lastTest", allResults.get(0).getTestTimestamp()
+                )
+            );
+            
+        } catch (Exception e) {
+            return Map.of(
+                "error", "Failed to calculate analytics: " + e.getMessage()
+            );
+        }
+    }
+    
+    private Map<String, Object> calculateBasicStats(List<Double> values, String unit) {
+        if (values.isEmpty()) {
+            return Map.of(
+                "count", 0,
+                "average", 0.0,
+                "min", 0.0,
+                "max", 0.0,
+                "unit", unit
+            );
+        }
+        
+        double sum = values.stream().mapToDouble(Double::doubleValue).sum();
+        double average = sum / values.size();
+        double min = values.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
+        double max = values.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
+        
+        return Map.of(
+            "count", values.size(),
+            "average", Math.round(average * 100.0) / 100.0,
+            "min", Math.round(min * 100.0) / 100.0,
+            "max", Math.round(max * 100.0) / 100.0,
+            "unit", unit
+        );
+    }
 }
