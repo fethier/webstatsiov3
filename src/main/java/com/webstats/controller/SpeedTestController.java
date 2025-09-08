@@ -154,4 +154,34 @@ public class SpeedTestController {
             return ResponseEntity.badRequest().body("Failed to get analytics summary: " + e.getMessage());
         }
     }
+    
+    @GetMapping("/download/{sizeMB}")
+    public ResponseEntity<byte[]> downloadTestFile(@PathVariable int sizeMB) {
+        try {
+            // Limit size to prevent abuse
+            if (sizeMB < 1 || sizeMB > 100) {
+                return ResponseEntity.badRequest().build();
+            }
+            
+            // Generate test data
+            int sizeBytes = sizeMB * 1024 * 1024;
+            byte[] testData = new byte[sizeBytes];
+            
+            // Fill with pseudo-random data (for better compression testing)
+            for (int i = 0; i < sizeBytes; i++) {
+                testData[i] = (byte) (i % 256);
+            }
+            
+            return ResponseEntity.ok()
+                .header("Content-Type", "application/octet-stream")
+                .header("Content-Length", String.valueOf(sizeBytes))
+                .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                .header("Pragma", "no-cache")
+                .header("Expires", "0")
+                .body(testData);
+            
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
 }

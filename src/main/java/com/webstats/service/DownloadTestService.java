@@ -19,12 +19,12 @@ public class DownloadTestService {
     
     private final ExecutorService executorService = Executors.newCachedThreadPool();
     
-    // Test files of various sizes (in MB) - these should be hosted on your server
-    private static final String[] TEST_URLS = {
-        "https://www.speedtest.net/api/js/speedtest/1MB.bin",
-        "https://www.speedtest.net/api/js/speedtest/5MB.bin",
-        "https://www.speedtest.net/api/js/speedtest/10MB.bin"
-    };
+    // Local test file URLs - using our own server endpoints
+    private static final String BASE_URL = "http://localhost:8080/api/speedtest/download/";
+    
+    private String getTestUrl(int sizeMB) {
+        return BASE_URL + sizeMB;
+    }
     
     public CompletableFuture<SpeedTestResult.SpeedMetrics> performDownloadTest(
             SpeedTestResult.TestConfiguration config) {
@@ -157,11 +157,11 @@ public class DownloadTestService {
     private String selectTestUrl(int durationSeconds) {
         // Select appropriate test file size based on duration
         if (durationSeconds <= 5) {
-            return TEST_URLS[0]; // 1MB
+            return getTestUrl(1); // 1MB
         } else if (durationSeconds <= 15) {
-            return TEST_URLS[1]; // 5MB
+            return getTestUrl(5); // 5MB
         } else {
-            return TEST_URLS[2]; // 10MB
+            return getTestUrl(10); // 10MB
         }
     }
     
