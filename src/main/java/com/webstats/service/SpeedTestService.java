@@ -216,22 +216,28 @@ public class SpeedTestService {
         try {
             String host = "8.8.8.8"; // Google DNS for testing
             int port = 53;
-            
+
             SpeedTestResult.LatencyMetrics latencyMetrics = latencyMeasurementService
                     .measureLatency(host, port).get();
-            
+
             result.setLatencyMetrics(latencyMetrics);
-            
+
+            // Update session with real-time latency results
+            session.setLatencyMetrics(latencyMetrics);
+            speedTestSessionRepository.save(session);
+
             // Add raw measurements
             List<SpeedTestResult.RawMeasurement> latencyMeasurements = latencyMeasurementService
                     .performMultipleLatencyRuns(host, port, session.getTestConfiguration().getNumberOfRuns()).get();
             measurements.addAll(latencyMeasurements);
-            
+
         } catch (Exception e) {
             // Create default latency metrics on failure
             SpeedTestResult.LatencyMetrics defaultMetrics = new SpeedTestResult.LatencyMetrics();
             defaultMetrics.setPingMs(-1.0);
             result.setLatencyMetrics(defaultMetrics);
+            session.setLatencyMetrics(defaultMetrics);
+            speedTestSessionRepository.save(session);
         }
     }
     
@@ -241,18 +247,26 @@ public class SpeedTestService {
             SpeedTestResult.SpeedMetrics downloadMetrics = downloadTestService
                     .performDownloadTest(session.getTestConfiguration()).get();
             result.setDownloadMetrics(downloadMetrics);
-            
+
+            // Update session with real-time download results
+            session.setDownloadMetrics(downloadMetrics);
+            speedTestSessionRepository.save(session);
+
             // Get detailed measurements
             List<SpeedTestResult.RawMeasurement> downloadMeasurements = downloadTestService
                     .performMultipleDownloadRuns(session.getTestConfiguration()).get();
             measurements.addAll(downloadMeasurements);
-            
+
         } catch (Exception e) {
             System.err.println("Download test failed, using fallback: " + e.getMessage());
             // Fallback to simulated test
             SpeedTestResult.SpeedMetrics downloadMetrics = simulateSpeedTest("download", session.getTestConfiguration());
             result.setDownloadMetrics(downloadMetrics);
-            
+
+            // Update session with simulated results
+            session.setDownloadMetrics(downloadMetrics);
+            speedTestSessionRepository.save(session);
+
             // Add simulated measurements
             for (int i = 0; i < session.getTestConfiguration().getNumberOfRuns(); i++) {
                 SpeedTestResult.RawMeasurement measurement = new SpeedTestResult.RawMeasurement();
@@ -271,18 +285,26 @@ public class SpeedTestService {
             SpeedTestResult.SpeedMetrics uploadMetrics = uploadTestService
                     .performUploadTest(session.getTestConfiguration()).get();
             result.setUploadMetrics(uploadMetrics);
-            
+
+            // Update session with real-time upload results
+            session.setUploadMetrics(uploadMetrics);
+            speedTestSessionRepository.save(session);
+
             // Get detailed measurements
             List<SpeedTestResult.RawMeasurement> uploadMeasurements = uploadTestService
                     .performMultipleUploadRuns(session.getTestConfiguration()).get();
             measurements.addAll(uploadMeasurements);
-            
+
         } catch (Exception e) {
             System.err.println("Upload test failed, using fallback: " + e.getMessage());
             // Fallback to simulated test
             SpeedTestResult.SpeedMetrics uploadMetrics = simulateSpeedTest("upload", session.getTestConfiguration());
             result.setUploadMetrics(uploadMetrics);
-            
+
+            // Update session with simulated results
+            session.setUploadMetrics(uploadMetrics);
+            speedTestSessionRepository.save(session);
+
             // Add simulated measurements
             for (int i = 0; i < session.getTestConfiguration().getNumberOfRuns(); i++) {
                 SpeedTestResult.RawMeasurement measurement = new SpeedTestResult.RawMeasurement();
@@ -347,8 +369,24 @@ public class SpeedTestService {
         response.setProgressPercentage(session.getProgressPercentage());
         response.setErrorMessage(session.getErrorMessage());
         response.setTestTimestamp(session.getSessionStart());
-        
-        // If completed, get the result
+
+        // Include real-time metrics from session (available during test execution)
+        if (session.getDownloadMetrics() != null) {
+            SpeedTestResponseDto.SpeedMetricsDto downloadDto = mapSpeedMetrics(session.getDownloadMetrics());
+            response.setDownloadMetrics(downloadDto);
+        }
+
+        if (session.getUploadMetrics() != null) {
+            SpeedTestResponseDto.SpeedMetricsDto uploadDto = mapSpeedMetrics(session.getUploadMetrics());
+            response.setUploadMetrics(uploadDto);
+        }
+
+        if (session.getLatencyMetrics() != null) {
+            SpeedTestResponseDto.LatencyMetricsDto latencyDto = mapLatencyMetrics(session.getLatencyMetrics());
+            response.setLatencyMetrics(latencyDto);
+        }
+
+        // If completed, get the final result
         if (session.getStatus() == SpeedTestSession.SessionStatus.COMPLETED) {
             List<SpeedTestResult> results = speedTestResultRepository.findBySessionId(sessionId);
             if (!results.isEmpty()) {

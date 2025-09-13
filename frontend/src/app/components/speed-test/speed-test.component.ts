@@ -20,45 +20,43 @@ import { Subscription } from 'rxjs';
             <div *ngIf="!isTestRunning && !testResult && isStarting" class="starting-state text-center">
               <div class="spinner-border text-primary mb-3" style="width: 4rem; height: 4rem;"></div>
               <h3>Initializing Speed Test...</h3>
-              <p class="lead">Test Configuration: 10 seconds, 1 run, 4 connections</p>
+              <p class="lead">Test Configuration: 5 seconds per test, 1 run, 4 connections</p>
             </div>
             
             <!-- Test Progress -->
             <div *ngIf="isTestRunning" class="test-progress text-center">
               <div class="progress-header mb-5">
                 <h2 class="display-4 mb-3">{{ getCurrentPhaseText() }}</h2>
-                <p class="lead text-muted">{{ testStatus?.progressPercentage }}% Complete</p>
+                <p class="lead text-muted">Testing each metric for 5 seconds...</p>
               </div>
 
-              <div class="progress mb-5" style="height: 30px;">
-                <div class="progress-bar progress-bar-striped progress-bar-animated"
-                     [style.width.%]="testStatus?.progressPercentage || 0">
-                </div>
-              </div>
-
-              <div class="current-metrics" *ngIf="testStatus">
+              <!-- Real-time Results Display -->
+              <div class="current-metrics">
                 <div class="row text-center justify-content-center">
-                  <div class="col-lg-3 col-md-6 mb-4" *ngIf="testStatus.downloadMetrics">
-                    <div class="metric-box fullscreen-metric">
+                  <div class="col-lg-3 col-md-6 mb-4">
+                    <div class="metric-box fullscreen-metric" [class.active]="testStatus?.currentPhase === 'DOWNLOAD_TEST'">
                       <h3>Download</h3>
-                      <p class="metric-value">{{ testStatus.downloadMetrics.speedMbps | number:'1.1-1' }}</p>
+                      <p class="metric-value">{{ getDisplayValue('download') }}</p>
                       <p class="metric-unit">Mbps</p>
+                      <div class="phase-indicator" *ngIf="testStatus?.currentPhase === 'DOWNLOAD_TEST'">Testing...</div>
                     </div>
                   </div>
 
-                  <div class="col-lg-3 col-md-6 mb-4" *ngIf="testStatus.uploadMetrics">
-                    <div class="metric-box fullscreen-metric">
+                  <div class="col-lg-3 col-md-6 mb-4">
+                    <div class="metric-box fullscreen-metric" [class.active]="testStatus?.currentPhase === 'UPLOAD_TEST'">
                       <h3>Upload</h3>
-                      <p class="metric-value">{{ testStatus.uploadMetrics.speedMbps | number:'1.1-1' }}</p>
+                      <p class="metric-value">{{ getDisplayValue('upload') }}</p>
                       <p class="metric-unit">Mbps</p>
+                      <div class="phase-indicator" *ngIf="testStatus?.currentPhase === 'UPLOAD_TEST'">Testing...</div>
                     </div>
                   </div>
 
-                  <div class="col-lg-3 col-md-6 mb-4" *ngIf="testStatus.latencyMetrics">
-                    <div class="metric-box fullscreen-metric">
+                  <div class="col-lg-3 col-md-6 mb-4">
+                    <div class="metric-box fullscreen-metric" [class.active]="testStatus?.currentPhase === 'LATENCY_TEST'">
                       <h3>Latency</h3>
-                      <p class="metric-value">{{ testStatus.latencyMetrics.pingMs | number:'1.0-0' }}</p>
+                      <p class="metric-value">{{ getDisplayValue('latency') }}</p>
                       <p class="metric-unit">ms</p>
+                      <div class="phase-indicator" *ngIf="testStatus?.currentPhase === 'LATENCY_TEST'">Testing...</div>
                     </div>
                   </div>
                 </div>
@@ -173,6 +171,15 @@ import { Subscription } from 'rxjs';
       padding: 2rem;
       border-radius: 1rem;
       color: white;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .metric-box.active {
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+      transform: scale(1.05);
     }
 
     .fullscreen-metric {
@@ -335,12 +342,32 @@ import { Subscription } from 'rxjs';
     .text-muted {
       color: rgba(255, 255, 255, 0.7) !important;
     }
+
+    .phase-indicator {
+      position: absolute;
+      bottom: 0.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 123, 255, 0.8);
+      color: white;
+      padding: 0.25rem 0.75rem;
+      border-radius: 1rem;
+      font-size: 0.8rem;
+      font-weight: bold;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
   `]
 })
 export class SpeedTestComponent implements OnInit, OnDestroy {
   testConfig: SpeedTestRequest = {
     testType: 'FULL',
-    testDurationSeconds: 10,
+    testDurationSeconds: 5,
     numberOfRuns: 1,
     concurrentConnections: 4
   };
@@ -466,6 +493,27 @@ export class SpeedTestComponent implements OnInit, OnDestroy {
       document.exitFullscreen().catch(err => {
         console.log('Could not exit fullscreen mode:', err);
       });
+    }
+  }
+
+  getDisplayValue(metric: string): string {
+    if (!this.testStatus) return '--';
+
+    switch (metric) {
+      case 'download':
+        return this.testStatus.downloadMetrics
+          ? Math.round(this.testStatus.downloadMetrics.speedMbps).toString()
+          : '--';
+      case 'upload':
+        return this.testStatus.uploadMetrics
+          ? Math.round(this.testStatus.uploadMetrics.speedMbps).toString()
+          : '--';
+      case 'latency':
+        return this.testStatus.latencyMetrics
+          ? Math.round(this.testStatus.latencyMetrics.pingMs).toString()
+          : '--';
+      default:
+        return '--';
     }
   }
 }

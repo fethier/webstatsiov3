@@ -46,7 +46,17 @@ public class SpeedTestSession {
     
     @Field("server_info")
     private SpeedTestResult.ServerInfo serverInfo;
-    
+
+    // Real-time metrics (updated during test execution)
+    @Field("download_metrics")
+    private SpeedTestResult.SpeedMetrics downloadMetrics;
+
+    @Field("upload_metrics")
+    private SpeedTestResult.SpeedMetrics uploadMetrics;
+
+    @Field("latency_metrics")
+    private SpeedTestResult.LatencyMetrics latencyMetrics;
+
     public SpeedTestSession() {
         this.sessionStart = LocalDateTime.now();
         this.status = SessionStatus.INITIALIZING;
@@ -98,4 +108,13 @@ public class SpeedTestSession {
     
     public SpeedTestResult.ServerInfo getServerInfo() { return serverInfo; }
     public void setServerInfo(SpeedTestResult.ServerInfo serverInfo) { this.serverInfo = serverInfo; }
+
+    public SpeedTestResult.SpeedMetrics getDownloadMetrics() { return downloadMetrics; }
+    public void setDownloadMetrics(SpeedTestResult.SpeedMetrics downloadMetrics) { this.downloadMetrics = downloadMetrics; }
+
+    public SpeedTestResult.SpeedMetrics getUploadMetrics() { return uploadMetrics; }
+    public void setUploadMetrics(SpeedTestResult.SpeedMetrics uploadMetrics) { this.uploadMetrics = uploadMetrics; }
+
+    public SpeedTestResult.LatencyMetrics getLatencyMetrics() { return latencyMetrics; }
+    public void setLatencyMetrics(SpeedTestResult.LatencyMetrics latencyMetrics) { this.latencyMetrics = latencyMetrics; }
 }
