@@ -27,9 +27,8 @@ COPY --from=build /app/dist/webstats-frontend/ .
 # Copy custom nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Create a non-root user
-RUN addgroup -g 101 -S nginx && \
-    adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
+# Ensure nginx user exists (nginx:alpine already has it)
+RUN id nginx || adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin nginx
 
 # Change ownership of nginx directories
 RUN chown -R nginx:nginx /var/cache/nginx && \

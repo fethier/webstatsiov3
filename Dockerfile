@@ -1,5 +1,5 @@
 # Build stage
-FROM maven:3.9-openjdk-17-slim AS build
+FROM maven:3.9-eclipse-temurin-21-alpine AS build
 WORKDIR /app
 
 # Copy pom.xml and download dependencies (for better caching)
@@ -11,7 +11,7 @@ COPY src ./src
 RUN mvn clean package -DskipTests
 
 # Runtime stage
-FROM openjdk:17-jre-slim
+FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
 # Create a non-root user
