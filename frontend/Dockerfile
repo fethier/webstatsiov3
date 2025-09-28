@@ -1,5 +1,5 @@
 # Build stage
-FROM node:18-alpine AS build
+FROM node:18 AS build
 WORKDIR /app
 
 # Copy package files
@@ -15,7 +15,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM nginx:alpine
+FROM nginx:latest
 WORKDIR /usr/share/nginx/html
 
 # Remove default nginx static assets
@@ -27,24 +27,12 @@ COPY --from=build /app/dist/webstats-frontend/ .
 # Copy custom nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Ensure nginx user exists (nginx:alpine already has it)
-RUN id nginx || adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin nginx
-
-# Change ownership of nginx directories
-RUN chown -R nginx:nginx /var/cache/nginx && \
-    chown -R nginx:nginx /var/log/nginx && \
-    chown -R nginx:nginx /etc/nginx/conf.d && \
-    chown -R nginx:nginx /usr/share/nginx/html
-
-# Switch to non-root user
-USER nginx
-
 # Expose port
 EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+  CMD curl -f http://localhost/ || exit 1
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]

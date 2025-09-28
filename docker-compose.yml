@@ -14,6 +14,41 @@ services:
       - mongodb_data:/data/db
     networks:
       - webstats-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build: .
+    container_name: webstats-backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATA_MONGODB_URI: mongodb://admin:password@mongodb:27017/webstats?authSource=admin
+      SPRING_WEB_CORS_ALLOWED_ORIGINS: http://localhost:3000,http://frontend:80
+    networks:
+      - webstats-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: webstats-frontend
+    ports:
+      - "3000:80"
+    networks:
+      - webstats-network
+    depends_on:
+      backend:
+        condition: service_healthy
 
 networks:
   webstats-network:
