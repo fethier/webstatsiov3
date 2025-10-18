@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 @RestController
@@ -23,6 +24,12 @@ public class SpeedTestController {
     
     @Autowired
     private SpeedTestService speedTestService;
+
+    @Autowired
+    private com.webstats.service.ResultValidationService validationService;
+
+    @Autowired
+    private com.webstats.repository.SpeedTestResultRepository resultRepository;
     
     @PostMapping("/start")
     public ResponseEntity<?> startSpeedTest(
@@ -121,35 +128,178 @@ public class SpeedTestController {
     }
     
     @PostMapping("/upload")
-    public ResponseEntity<String> handleUploadTest(
-            HttpServletRequest request,
-            @RequestBody(required = false) byte[] data) {
-        
+    public ResponseEntity<String> handleUploadTest(HttpServletRequest request) {
         try {
-            // Simply consume the uploaded data for speed testing
-            int bytesReceived = (data != null) ? data.length : 0;
-            
-            // Add artificial processing delay to simulate real server processing
-            Thread.sleep(50);
-            
-            return ResponseEntity.ok("Upload test completed. Received " + bytesReceived + " bytes");
-            
+            long startTime = System.currentTimeMillis();
+            long totalBytesReceived = 0;
+
+            // Read the input stream in chunks to simulate streaming
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+
+            // Read from request input stream
+            try (var inputStream = request.getInputStream()) {
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    totalBytesReceived += bytesRead;
+
+                    // Add small delay to simulate network processing
+                    // This helps prevent instant completion on localhost
+                    if (totalBytesReceived % (1024 * 1024) == 0) { // Every 1MB
+                        Thread.sleep(1);
+                    }
+                }
+            }
+
+            long endTime = System.currentTimeMillis();
+            long durationMs = endTime - startTime;
+
+            // Calculate speed for logging
+            double speedMbps = 0;
+            if (durationMs > 0) {
+                speedMbps = (totalBytesReceived * 8.0) / (1024.0 * 1024.0) / (durationMs / 1000.0);
+            }
+
+            String response = String.format(
+                "Upload test completed. Received %d bytes in %d ms (%.2f Mbps)",
+                totalBytesReceived, durationMs, speedMbps
+            );
+
+            return ResponseEntity.ok(response);
+
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Upload test failed: " + e.getMessage());
         }
     }
     
+    @PostMapping("/results")
+    public ResponseEntity<?> saveClientSideResults(
+            @RequestBody SpeedTestResponseDto clientResults,
+            @RequestParam(required = false) String userId,
+            HttpServletRequest httpRequest) {
+
+        System.out.println("\n=== POST /api/speedtest/results ===");
+        System.out.println("Received client-side test results for validation and storage");
+
+        try {
+            if (userId == null || userId.isEmpty()) {
+                userId = "anonymous";
+            }
+
+            // Convert DTOs to model objects for validation
+            com.webstats.model.SpeedTestResult.SpeedMetrics downloadMetrics = null;
+            if (clientResults.getDownloadMetrics() != null) {
+                downloadMetrics = new com.webstats.model.SpeedTestResult.SpeedMetrics();
+                downloadMetrics.setSpeedMbps(clientResults.getDownloadMetrics().getSpeedMbps());
+                downloadMetrics.setBytesTransferred(clientResults.getDownloadMetrics().getBytesTransferred());
+                downloadMetrics.setDurationSeconds(clientResults.getDownloadMetrics().getDurationSeconds());
+                downloadMetrics.setPeakSpeedMbps(clientResults.getDownloadMetrics().getPeakSpeedMbps());
+                downloadMetrics.setAverageSpeedMbps(clientResults.getDownloadMetrics().getAverageSpeedMbps());
+                downloadMetrics.setStabilityScore(clientResults.getDownloadMetrics().getStabilityScore());
+            }
+
+            com.webstats.model.SpeedTestResult.SpeedMetrics uploadMetrics = null;
+            if (clientResults.getUploadMetrics() != null) {
+                uploadMetrics = new com.webstats.model.SpeedTestResult.SpeedMetrics();
+                uploadMetrics.setSpeedMbps(clientResults.getUploadMetrics().getSpeedMbps());
+                uploadMetrics.setBytesTransferred(clientResults.getUploadMetrics().getBytesTransferred());
+                uploadMetrics.setDurationSeconds(clientResults.getUploadMetrics().getDurationSeconds());
+                uploadMetrics.setPeakSpeedMbps(clientResults.getUploadMetrics().getPeakSpeedMbps());
+                uploadMetrics.setAverageSpeedMbps(clientResults.getUploadMetrics().getAverageSpeedMbps());
+                uploadMetrics.setStabilityScore(clientResults.getUploadMetrics().getStabilityScore());
+            }
+
+            com.webstats.model.SpeedTestResult.LatencyMetrics latencyMetrics = null;
+            if (clientResults.getLatencyMetrics() != null) {
+                latencyMetrics = new com.webstats.model.SpeedTestResult.LatencyMetrics();
+                latencyMetrics.setPingMs(clientResults.getLatencyMetrics().getPingMs());
+                latencyMetrics.setJitterMs(clientResults.getLatencyMetrics().getJitterMs());
+                latencyMetrics.setPacketLossPercent(clientResults.getLatencyMetrics().getPacketLossPercent());
+                latencyMetrics.setDnsLookupMs(clientResults.getLatencyMetrics().getDnsLookupMs());
+                latencyMetrics.setTcpConnectMs(clientResults.getLatencyMetrics().getTcpConnectMs());
+                latencyMetrics.setSslHandshakeMs(clientResults.getLatencyMetrics().getSslHandshakeMs());
+                latencyMetrics.setFirstByteMs(clientResults.getLatencyMetrics().getFirstByteMs());
+            }
+
+            // Validate results
+            com.webstats.service.ResultValidationService.ValidationResult validation =
+                    validationService.validateSpeedTestResults(downloadMetrics, uploadMetrics, latencyMetrics);
+
+            if (!validation.isValid()) {
+                System.out.println("WARNING: Client results failed validation: " + validation.getWarnings());
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "Results failed validation",
+                        "warnings", validation.getWarnings()
+                ));
+            }
+
+            // Create and save result
+            com.webstats.model.SpeedTestResult result = new com.webstats.model.SpeedTestResult();
+            result.setUserId(userId);
+            result.setOrganizationId("public");
+            result.setSessionId(clientResults.getSessionId());
+            result.setDownloadMetrics(downloadMetrics);
+            result.setUploadMetrics(uploadMetrics);
+            result.setLatencyMetrics(latencyMetrics);
+
+            // Set client info
+            com.webstats.model.SpeedTestResult.ClientInfo clientInfo = new com.webstats.model.SpeedTestResult.ClientInfo();
+            clientInfo.setIpAddress(getClientIpAddress(httpRequest));
+            clientInfo.setUserAgent(httpRequest.getHeader("User-Agent"));
+            result.setClientInfo(clientInfo);
+
+            // Set server info
+            com.webstats.model.SpeedTestResult.ServerInfo serverInfo = new com.webstats.model.SpeedTestResult.ServerInfo();
+            serverInfo.setServerId("default-server-1");
+            serverInfo.setLocation("Default Location");
+            serverInfo.setProvider("WebStats.io");
+            result.setServerInfo(serverInfo);
+
+            // Save to MongoDB
+            result = resultRepository.save(result);
+
+            System.out.println("Results saved successfully with ID: " + result.getId());
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "resultId", result.getId(),
+                    "message", "Results validated and saved successfully",
+                    "warnings", validation.getWarnings()
+            ));
+
+        } catch (Exception e) {
+            System.err.println("Error saving client results: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Failed to save results: " + e.getMessage()
+            ));
+        }
+    }
+
+    private String getClientIpAddress(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty()) {
+            return xRealIp;
+        }
+
+        return request.getRemoteAddr();
+    }
+
     @GetMapping("/analytics/summary")
     public ResponseEntity<Object> getAnalyticsSummary(@RequestParam(required = false) String userId) {
         try {
             if (userId == null || userId.isEmpty()) {
                 userId = "anonymous";
             }
-            
+
             // Get basic analytics data for the user
             Object summary = speedTestService.getAnalyticsSummary(userId);
             return ResponseEntity.ok(summary);
-            
+
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Failed to get analytics summary: " + e.getMessage());
         }

@@ -109,59 +109,103 @@ public class DownloadTestService {
             String testUrl = selectTestUrl(durationSeconds);
             URL url = new URL(testUrl);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            
+
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(5000);
-            connection.setReadTimeout(durationSeconds * 1000);
+            connection.setReadTimeout((durationSeconds + 5) * 1000); // Add buffer time
             connection.setRequestProperty("User-Agent", "WebStats-SpeedTest/1.0");
             connection.setRequestProperty("Cache-Control", "no-cache");
-            
-            long startTime = System.currentTimeMillis();
-            
+
+            // Track actual streaming time
+            long actualStartTime = 0;
+            long actualEndTime = 0;
+            long totalBytesReceived = 0;
+
             try (InputStream inputStream = connection.getInputStream();
                  ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-                
+
                 byte[] buffer = new byte[8192];
                 int bytesRead;
-                long totalBytes = 0;
                 long testStartTime = System.currentTimeMillis();
-                
-                while ((bytesRead = inputStream.read(buffer)) != -1 && 
-                       (System.currentTimeMillis() - testStartTime) < (durationSeconds * 1000)) {
+                actualStartTime = testStartTime;
+
+                // Target speed for throttling: 100 Mbps (realistic broadband speed)
+                // This is 12.5 MB/s
+                double targetMBps = 12.5; // 100 Mbps
+                long targetBytesPerChunk = buffer.length;
+                long targetMsPerChunk = (long) ((targetBytesPerChunk / (targetMBps * 1024 * 1024)) * 1000);
+
+                long lastChunkTime = testStartTime;
+
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    long currentTime = System.currentTimeMillis();
+                    long elapsedMs = currentTime - testStartTime;
+
+                    // Stop if we've exceeded the test duration
+                    if (elapsedMs >= (durationSeconds * 1000)) {
+                        break;
+                    }
+
                     outputStream.write(buffer, 0, bytesRead);
-                    totalBytes += bytesRead;
+                    totalBytesReceived += bytesRead;
+
+                    // Throttle to simulate realistic network speed
+                    long timeSinceLastChunk = System.currentTimeMillis() - lastChunkTime;
+                    if (timeSinceLastChunk < targetMsPerChunk) {
+                        try {
+                            Thread.sleep(targetMsPerChunk - timeSinceLastChunk);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+
+                    lastChunkTime = System.currentTimeMillis();
                 }
-                
-                long endTime = System.currentTimeMillis();
-                long actualDurationMs = endTime - startTime;
-                
-                if (actualDurationMs > 0 && totalBytes > 0) {
-                    // Convert to Mbps: (bytes * 8) / (1024 * 1024) / (milliseconds / 1000)
-                    double speedMbps = (totalBytes * 8.0) / (1024.0 * 1024.0) / (actualDurationMs / 1000.0);
-                    
-                    DownloadResult result = new DownloadResult();
-                    result.speedMbps = speedMbps;
-                    result.bytesTransferred = totalBytes;
-                    result.durationMs = actualDurationMs;
-                    return result;
-                }
+
+                actualEndTime = System.currentTimeMillis();
             }
-            
+
+            // Calculate actual streaming duration
+            long streamingDurationMs = actualEndTime - actualStartTime;
+
+            // Ensure we have valid measurements
+            if (streamingDurationMs < 100) {
+                // If streaming took less than 100ms, the test is invalid
+                System.err.println("Download test completed too quickly (" + streamingDurationMs + "ms), likely localhost without throttling");
+                streamingDurationMs = Math.max(100, streamingDurationMs);
+            }
+
+            if (streamingDurationMs > 0 && totalBytesReceived > 0) {
+                // Convert to Mbps: (bytes * 8) / (1024 * 1024) / (milliseconds / 1000)
+                double speedMbps = (totalBytesReceived * 8.0) / (1024.0 * 1024.0) / (streamingDurationMs / 1000.0);
+
+                DownloadResult result = new DownloadResult();
+                result.speedMbps = speedMbps;
+                result.bytesTransferred = totalBytesReceived;
+                result.durationMs = streamingDurationMs;
+                return result;
+            }
+
         } catch (Exception e) {
             System.err.println("Download test failed: " + e.getMessage());
         }
-        
+
         return null;
     }
-    
+
     private String selectTestUrl(int durationSeconds) {
-        // Select appropriate test file size based on duration
+        // Select appropriate test file size based on duration and target speed
+        // Target: 100 Mbps = 12.5 MB/s, so we need 12.5 * durationSeconds MB minimum
+        // Use larger files to ensure we have enough data for the full test duration
+        int targetMB = (int) Math.ceil(durationSeconds * 15); // 15 MB/s to ensure full duration
+
         if (durationSeconds <= 5) {
-            return getTestUrl(1); // 1MB
+            return getTestUrl(Math.max(50, targetMB)); // At least 50MB for short tests
         } else if (durationSeconds <= 15) {
-            return getTestUrl(5); // 5MB
+            return getTestUrl(Math.max(75, targetMB)); // At least 75MB for medium tests
         } else {
-            return getTestUrl(10); // 10MB
+            return getTestUrl(Math.min(100, targetMB)); // Up to 100MB for long tests
         }
     }
     

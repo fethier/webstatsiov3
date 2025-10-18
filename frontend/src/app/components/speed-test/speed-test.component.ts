@@ -395,42 +395,51 @@ export class SpeedTestComponent implements OnInit, OnDestroy {
     }
   }
 
-  startTest() {
+  async startTest() {
     this.isStarting = true;
     this.error = null;
-    
-    this.speedTestService.startSpeedTest(this.testConfig).subscribe({
-      next: (response) => {
-        this.isStarting = false;
-        this.isTestRunning = true;
-        this.testStatus = response;
-        this.pollForUpdates(response.sessionId);
-      },
-      error: (err) => {
-        this.isStarting = false;
-        this.error = err.error?.message || 'Failed to start speed test';
-      }
-    });
+
+    try {
+      // Run client-side speed test with real-time updates
+      await this.runClientSideTest();
+    } catch (err) {
+      this.isStarting = false;
+      this.isTestRunning = false;
+      this.error = err instanceof Error ? err.message : 'Failed to run speed test';
+    }
+  }
+
+  private async runClientSideTest() {
+    this.isStarting = false;
+    this.isTestRunning = true;
+
+    // Initialize status
+    this.testStatus = {
+      sessionId: `session_${Date.now()}`,
+      testTimestamp: new Date().toISOString(),
+      status: 'RUNNING',
+      currentPhase: 'INITIALIZATION',
+      progressPercentage: 0
+    };
+
+    try {
+      // Perform the test and get results
+      const result = await this.speedTestService.performClientSideSpeedTest(this.testConfig);
+
+      // Update final results
+      this.testStatus = result;
+      this.testResult = result;
+      this.isTestRunning = false;
+
+    } catch (error) {
+      this.isTestRunning = false;
+      this.error = error instanceof Error ? error.message : 'Test failed';
+      throw error;
+    }
   }
 
   private pollForUpdates(sessionId: string) {
-    this.pollSubscription = this.speedTestService.pollTestStatus(sessionId).subscribe({
-      next: (response) => {
-        this.testStatus = response;
-        
-        if (response.status === 'COMPLETED') {
-          this.isTestRunning = false;
-          this.testResult = response;
-        } else if (response.status === 'FAILED') {
-          this.isTestRunning = false;
-          this.error = response.errorMessage || 'Test failed';
-        }
-      },
-      error: (err) => {
-        this.isTestRunning = false;
-        this.error = err.error?.message || 'Failed to get test status';
-      }
-    });
+    // No longer needed - keeping for backwards compatibility
   }
 
   getCurrentPhaseText(): string {

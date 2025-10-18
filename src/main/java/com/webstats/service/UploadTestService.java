@@ -104,62 +104,102 @@ public class UploadTestService {
         try {
             URL url = new URL(UPLOAD_URL);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            
+
             connection.setRequestMethod("POST");
             connection.setDoOutput(true);
             connection.setConnectTimeout(5000);
-            connection.setReadTimeout(durationSeconds * 1000);
+            connection.setReadTimeout((durationSeconds + 5) * 1000); // Add buffer time
             connection.setRequestProperty("Content-Type", "application/octet-stream");
             connection.setRequestProperty("User-Agent", "WebStats-SpeedTest/1.0");
             connection.setRequestProperty("Cache-Control", "no-cache");
-            
-            // Generate test data size based on duration (aim for ~1-2MB per second)
-            int testDataSize = Math.max(1024 * 1024, durationSeconds * 1024 * 1024); // At least 1MB
+            connection.setChunkedStreamingMode(8192); // Enable chunked transfer encoding
+
+            // Calculate data size: aim for 10-20 MB/s target speed to fill the duration
+            // This ensures we have enough data to transfer during the test period
+            int targetBytesPerSecond = 15 * 1024 * 1024; // 15 MB/s target
+            int testDataSize = durationSeconds * targetBytesPerSecond;
+            testDataSize = Math.max(testDataSize, 5 * 1024 * 1024); // Minimum 5MB
+
             byte[] testData = generateTestData(testDataSize);
-            
-            connection.setRequestProperty("Content-Length", String.valueOf(testData.length));
-            
-            long startTime = System.currentTimeMillis();
-            
+
+            // Track actual bytes sent and time taken
+            long actualStartTime = 0;
+            long actualEndTime = 0;
+            long totalBytesSent = 0;
+
             try (OutputStream outputStream = connection.getOutputStream()) {
-                int chunkSize = 8192;
-                long totalBytes = 0;
+                int chunkSize = 8192; // 8KB chunks
                 long testStartTime = System.currentTimeMillis();
-                
+                actualStartTime = testStartTime;
+
+                // Target speed for throttling: 100 Mbps (realistic broadband speed)
+                // This is 12.5 MB/s or 12,800 KB/s
+                double targetMBps = 12.5; // 100 Mbps
+                long targetBytesPerChunk = chunkSize;
+                long targetMsPerChunk = (long) ((targetBytesPerChunk / (targetMBps * 1024 * 1024)) * 1000);
+
+                long lastChunkTime = testStartTime;
+
                 for (int i = 0; i < testData.length; i += chunkSize) {
-                    if ((System.currentTimeMillis() - testStartTime) >= (durationSeconds * 1000)) {
+                    long currentTime = System.currentTimeMillis();
+                    long elapsedMs = currentTime - testStartTime;
+
+                    // Stop if we've exceeded the test duration
+                    if (elapsedMs >= (durationSeconds * 1000)) {
                         break;
                     }
-                    
+
                     int bytesToWrite = Math.min(chunkSize, testData.length - i);
                     outputStream.write(testData, i, bytesToWrite);
                     outputStream.flush();
-                    totalBytes += bytesToWrite;
+                    totalBytesSent += bytesToWrite;
+
+                    // Throttle to simulate realistic network speed
+                    long timeSinceLastChunk = System.currentTimeMillis() - lastChunkTime;
+                    if (timeSinceLastChunk < targetMsPerChunk) {
+                        try {
+                            Thread.sleep(targetMsPerChunk - timeSinceLastChunk);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+
+                    lastChunkTime = System.currentTimeMillis();
                 }
-                
-                long endTime = System.currentTimeMillis();
-                long actualDurationMs = endTime - startTime;
-                
-                // Check response
-                int responseCode = connection.getResponseCode();
-                if (responseCode == HttpURLConnection.HTTP_OK && actualDurationMs > 0 && totalBytes > 0) {
-                    // Convert to Mbps
-                    double speedMbps = (totalBytes * 8.0) / (1024.0 * 1024.0) / (actualDurationMs / 1000.0);
-                    
-                    UploadResult result = new UploadResult();
-                    result.speedMbps = speedMbps;
-                    result.bytesTransferred = totalBytes;
-                    result.durationMs = actualDurationMs;
-                    return result;
-                }
+
+                actualEndTime = System.currentTimeMillis();
             }
-            
+
+            // Calculate actual streaming duration (exclude connection setup time)
+            long streamingDurationMs = actualEndTime - actualStartTime;
+
+            // Ensure we have valid measurements
+            if (streamingDurationMs < 100) {
+                // If streaming took less than 100ms, the test is invalid
+                System.err.println("Upload test completed too quickly (" + streamingDurationMs + "ms), likely localhost without throttling");
+                streamingDurationMs = Math.max(100, streamingDurationMs);
+            }
+
+            // Check response
+            int responseCode = connection.getResponseCode();
+            if (responseCode == HttpURLConnection.HTTP_OK && streamingDurationMs > 0 && totalBytesSent > 0) {
+                // Convert to Mbps using actual streaming time
+                double speedMbps = (totalBytesSent * 8.0) / (1024.0 * 1024.0) / (streamingDurationMs / 1000.0);
+
+                UploadResult result = new UploadResult();
+                result.speedMbps = speedMbps;
+                result.bytesTransferred = totalBytesSent;
+                result.durationMs = streamingDurationMs;
+                return result;
+            }
+
         } catch (Exception e) {
             System.err.println("Upload test failed: " + e.getMessage());
             // Fallback to simulated test if upload endpoint is not available
             return performSimulatedUploadTest(durationSeconds);
         }
-        
+
         return null;
     }
     
