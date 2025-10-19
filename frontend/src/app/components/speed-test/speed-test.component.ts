@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -81,10 +81,10 @@ import { Subscription } from 'rxjs';
                     <div class="result-card download fullscreen-result">
                       <div class="result-icon">📥</div>
                       <h3>Download</h3>
-                      <div class="main-metric">{{ testResult.downloadMetrics.speedMbps | number:'1.1-1' }}</div>
+                      <div class="main-metric">{{ testResult.downloadMetrics.speedMbps | number:'1.2-2' }}</div>
                       <div class="metric-unit">Mbps</div>
                       <div class="sub-metrics">
-                        <small>Peak: {{ testResult.downloadMetrics.peakSpeedMbps | number:'1.1-1' }} Mbps</small><br>
+                        <small>Peak: {{ testResult.downloadMetrics.peakSpeedMbps | number:'1.2-2' }} Mbps</small><br>
                         <small>Stability: {{ testResult.downloadMetrics.stabilityScore | number:'1.0-0' }}%</small>
                       </div>
                     </div>
@@ -95,10 +95,10 @@ import { Subscription } from 'rxjs';
                     <div class="result-card upload fullscreen-result">
                       <div class="result-icon">📤</div>
                       <h3>Upload</h3>
-                      <div class="main-metric">{{ testResult.uploadMetrics.speedMbps | number:'1.1-1' }}</div>
+                      <div class="main-metric">{{ testResult.uploadMetrics.speedMbps | number:'1.2-2' }}</div>
                       <div class="metric-unit">Mbps</div>
                       <div class="sub-metrics">
-                        <small>Peak: {{ testResult.uploadMetrics.peakSpeedMbps | number:'1.1-1' }} Mbps</small><br>
+                        <small>Peak: {{ testResult.uploadMetrics.peakSpeedMbps | number:'1.2-2' }} Mbps</small><br>
                         <small>Stability: {{ testResult.uploadMetrics.stabilityScore | number:'1.0-0' }}%</small>
                       </div>
                     </div>
@@ -380,7 +380,10 @@ export class SpeedTestComponent implements OnInit, OnDestroy {
   
   private pollSubscription?: Subscription;
 
-  constructor(private speedTestService: SpeedTestService) {}
+  constructor(
+    private speedTestService: SpeedTestService,
+    private ngZone: NgZone
+  ) {}
 
   ngOnInit() {
     this.enterFullScreen();
@@ -423,8 +426,17 @@ export class SpeedTestComponent implements OnInit, OnDestroy {
     };
 
     try {
-      // Perform the test and get results
-      const result = await this.speedTestService.performClientSideSpeedTest(this.testConfig);
+      // Perform the test with real-time progress updates
+      const result = await this.speedTestService.performClientSideSpeedTest(
+        this.testConfig,
+        (update) => {
+          // Update UI in real-time as test progresses
+          // Run inside NgZone to ensure Angular's change detection picks up the updates
+          this.ngZone.run(() => {
+            this.testStatus = { ...update };
+          });
+        }
+      );
 
       // Update final results
       this.testStatus = result;
@@ -511,11 +523,11 @@ export class SpeedTestComponent implements OnInit, OnDestroy {
     switch (metric) {
       case 'download':
         return this.testStatus.downloadMetrics
-          ? Math.round(this.testStatus.downloadMetrics.speedMbps).toString()
+          ? this.testStatus.downloadMetrics.speedMbps.toFixed(2)
           : '--';
       case 'upload':
         return this.testStatus.uploadMetrics
-          ? Math.round(this.testStatus.uploadMetrics.speedMbps).toString()
+          ? this.testStatus.uploadMetrics.speedMbps.toFixed(2)
           : '--';
       case 'latency':
         return this.testStatus.latencyMetrics

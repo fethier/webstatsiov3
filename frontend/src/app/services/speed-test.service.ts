@@ -94,7 +94,10 @@ export class SpeedTestService {
   /**
    * Performs a complete client-side speed test and returns results to be saved
    */
-  async performClientSideSpeedTest(request: SpeedTestRequest): Promise<SpeedTestResponse> {
+  async performClientSideSpeedTest(
+    request: SpeedTestRequest,
+    onProgress?: (update: SpeedTestResponse) => void
+  ): Promise<SpeedTestResponse> {
     const sessionId = this.generateSessionId();
     const response: SpeedTestResponse = {
       sessionId,
@@ -108,17 +111,35 @@ export class SpeedTestService {
       // Run tests based on test type
       if (request.testType === 'FULL' || request.testType === 'LATENCY_ONLY') {
         response.currentPhase = 'LATENCY_TEST';
-        response.latencyMetrics = await this.performLatencyTest();
+        onProgress?.(response);
+        response.latencyMetrics = await this.performLatencyTest((metrics) => {
+          response.latencyMetrics = metrics;
+          onProgress?.(response);
+        });
       }
 
       if (request.testType === 'FULL' || request.testType === 'DOWNLOAD_ONLY') {
         response.currentPhase = 'DOWNLOAD_TEST';
-        response.downloadMetrics = await this.performDownloadTest(request.testDurationSeconds);
+        onProgress?.(response);
+        response.downloadMetrics = await this.performDownloadTest(
+          request.testDurationSeconds,
+          (metrics) => {
+            response.downloadMetrics = metrics;
+            onProgress?.(response);
+          }
+        );
       }
 
       if (request.testType === 'FULL' || request.testType === 'UPLOAD_ONLY') {
         response.currentPhase = 'UPLOAD_TEST';
-        response.uploadMetrics = await this.performUploadTest(request.testDurationSeconds);
+        onProgress?.(response);
+        response.uploadMetrics = await this.performUploadTest(
+          request.testDurationSeconds,
+          (metrics) => {
+            response.uploadMetrics = metrics;
+            onProgress?.(response);
+          }
+        );
       }
 
       response.currentPhase = 'COMPLETED';
@@ -140,7 +161,10 @@ export class SpeedTestService {
   /**
    * Client-side download speed test with improved stability
    */
-  private async performDownloadTest(durationSeconds: number): Promise<SpeedMetrics> {
+  private async performDownloadTest(
+    durationSeconds: number,
+    onProgress?: (metrics: SpeedMetrics) => void
+  ): Promise<SpeedMetrics> {
     const fileSizeMB = Math.max(50, durationSeconds * 15); // Enough data for the test duration
     const url = `${this.baseUrl}/download/${fileSizeMB}`;
 
@@ -212,6 +236,27 @@ export class SpeedTestService {
           bytesSinceLastMeasurement = 0;
           lastMeasurementTime = currentTime;
 
+          // Calculate current metrics for progress update
+          const currentDurationSeconds = (currentTime - startTime) / 1000;
+          const currentAverageSpeed = smoothedSpeeds.length > 0
+            ? smoothedSpeeds.reduce((a, b) => a + b, 0) / smoothedSpeeds.length
+            : 0;
+          const currentVariance = smoothedSpeeds.length > 0
+            ? smoothedSpeeds.reduce((sum, speed) => sum + Math.pow(speed - currentAverageSpeed, 2), 0) / smoothedSpeeds.length
+            : 0;
+          const currentCoefficientOfVariation = currentAverageSpeed > 0 ? Math.sqrt(currentVariance) / currentAverageSpeed : 0;
+          const currentStabilityScore = Math.max(0, Math.min(100, 100 - (currentCoefficientOfVariation * 100)));
+
+          // Send progress update
+          onProgress?.({
+            speedMbps: smoothedSpeed,
+            bytesTransferred: totalBytes,
+            durationSeconds: currentDurationSeconds,
+            peakSpeedMbps: peakSpeed,
+            averageSpeedMbps: currentAverageSpeed,
+            stabilityScore: currentStabilityScore
+          });
+
           // Log progress every second
           if (currentTime - lastLogTime >= 1000) {
             console.log(`Download progress: ${(totalBytes / 1024 / 1024).toFixed(2)} MB (${smoothedSpeed.toFixed(2)} Mbps)`);
@@ -259,7 +304,10 @@ export class SpeedTestService {
   /**
    * Client-side upload speed test using XMLHttpRequest for better upload tracking
    */
-  private async performUploadTest(durationSeconds: number): Promise<SpeedMetrics> {
+  private async performUploadTest(
+    durationSeconds: number,
+    onProgress?: (metrics: SpeedMetrics) => void
+  ): Promise<SpeedMetrics> {
     const totalDataSize = durationSeconds * 5 * 1024 * 1024; // 5 MB per second
     const url = `${this.baseUrl}/upload`;
 
@@ -313,6 +361,27 @@ export class SpeedTestService {
 
           lastProgressTime = currentTime;
           lastLoadedBytes = event.loaded;
+
+          // Calculate current metrics for progress update
+          const currentDurationSeconds = (currentTime - startTime) / 1000;
+          const currentAverageSpeed = speeds.length > 0
+            ? speeds.reduce((a, b) => a + b, 0) / speeds.length
+            : 0;
+          const currentVariance = speeds.length > 0
+            ? speeds.reduce((sum, speed) => sum + Math.pow(speed - currentAverageSpeed, 2), 0) / speeds.length
+            : 0;
+          const currentCoefficientOfVariation = currentAverageSpeed > 0 ? Math.sqrt(currentVariance) / currentAverageSpeed : 0;
+          const currentStabilityScore = Math.max(0, Math.min(100, 100 - (currentCoefficientOfVariation * 100)));
+
+          // Send progress update
+          onProgress?.({
+            speedMbps: smoothedSpeed,
+            bytesTransferred: event.loaded,
+            durationSeconds: currentDurationSeconds,
+            peakSpeedMbps: peakSpeed,
+            averageSpeedMbps: currentAverageSpeed,
+            stabilityScore: currentStabilityScore
+          });
 
           console.log(`Upload progress: ${(event.loaded / 1024 / 1024).toFixed(2)} MB / ${(event.total / 1024 / 1024).toFixed(2)} MB (${smoothedSpeed.toFixed(2)} Mbps)`);
         }
@@ -375,21 +444,21 @@ export class SpeedTestService {
   /**
    * Client-side latency test using WebSocket (faster than HTTP)
    */
-  private async performLatencyTest(): Promise<LatencyMetrics> {
+  private async performLatencyTest(onProgress?: (metrics: LatencyMetrics) => void): Promise<LatencyMetrics> {
     try {
       // Try WebSocket first (3-5ms latency)
-      return await this.performWebSocketLatencyTest();
+      return await this.performWebSocketLatencyTest(onProgress);
     } catch (error) {
       console.warn('WebSocket latency test failed, falling back to HTTP:', error);
       // Fallback to HTTP if WebSocket fails
-      return await this.performHttpLatencyTest();
+      return await this.performHttpLatencyTest(onProgress);
     }
   }
 
   /**
    * WebSocket-based latency test (3-5ms on localhost)
    */
-  private async performWebSocketLatencyTest(): Promise<LatencyMetrics> {
+  private async performWebSocketLatencyTest(onProgress?: (metrics: LatencyMetrics) => void): Promise<LatencyMetrics> {
     const pingCount = 10;
     const pings: number[] = [];
     const wsUrl = this.baseUrl.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws/ping';
@@ -425,6 +494,24 @@ export class SpeedTestService {
 
           if (startTime > 0) {
             pings.push(endTime - startTime);
+          }
+
+          // Send progress update after each ping
+          if (pings.length > 0) {
+            const currentAvgPing = pings.reduce((a, b) => a + b, 0) / pings.length;
+            const currentJitter = pings.length > 1
+              ? Math.sqrt(pings.reduce((sum, ping) => sum + Math.pow(ping - currentAvgPing, 2), 0) / pings.length)
+              : 0;
+
+            onProgress?.({
+              pingMs: currentAvgPing,
+              jitterMs: currentJitter,
+              packetLossPercent: 0,
+              dnsLookupMs: 0,
+              tcpConnectMs: 0,
+              sslHandshakeMs: 0,
+              firstByteMs: currentAvgPing
+            });
           }
 
           pingIndex++;
@@ -476,7 +563,7 @@ export class SpeedTestService {
   /**
    * HTTP-based latency test fallback (15-20ms on localhost)
    */
-  private async performHttpLatencyTest(): Promise<LatencyMetrics> {
+  private async performHttpLatencyTest(onProgress?: (metrics: LatencyMetrics) => void): Promise<LatencyMetrics> {
     const pingCount = 10;
     const pings: number[] = [];
     const url = `${this.baseUrl}/health`;
@@ -497,6 +584,22 @@ export class SpeedTestService {
 
       const endTime = performance.now();
       pings.push(endTime - startTime);
+
+      // Send progress update after each ping
+      const currentAvgPing = pings.reduce((a, b) => a + b, 0) / pings.length;
+      const currentJitter = pings.length > 1
+        ? Math.sqrt(pings.reduce((sum, ping) => sum + Math.pow(ping - currentAvgPing, 2), 0) / pings.length)
+        : 0;
+
+      onProgress?.({
+        pingMs: currentAvgPing,
+        jitterMs: currentJitter,
+        packetLossPercent: 0,
+        dnsLookupMs: 0,
+        tcpConnectMs: 0,
+        sslHandshakeMs: 0,
+        firstByteMs: currentAvgPing
+      });
 
       // Small delay between pings
       await new Promise(resolve => setTimeout(resolve, 100));

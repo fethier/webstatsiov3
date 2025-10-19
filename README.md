@@ -11,9 +11,9 @@ A speed test web application that provides instant results on network metrics in
 ## Prerequisites
 
 ### Backend Requirements
-- Java 17 or higher
+- Java 21 or higher
 - Maven 3.6+
-- MongoDB (running locally or remote connection)
+- MongoDB
 
 ### Frontend Requirements
 - Node.js 18+ 
