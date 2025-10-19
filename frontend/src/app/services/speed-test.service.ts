@@ -456,7 +456,7 @@ export class SpeedTestService {
   }
 
   /**
-   * WebSocket-based latency test (3-5ms on localhost)
+   * WebSocket-based latency test - completes in ~250ms with 10 pings
    */
   private async performWebSocketLatencyTest(onProgress?: (metrics: LatencyMetrics) => void): Promise<LatencyMetrics> {
     const pingCount = 10;
@@ -464,7 +464,7 @@ export class SpeedTestService {
     const wsUrl = this.baseUrl.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws/ping';
 
     return new Promise((resolve, reject) => {
-      console.log('Starting WebSocket latency test...');
+      console.log('Starting WebSocket latency test (10 pings)...');
 
       const ws = new WebSocket(wsUrl);
       let pingIndex = 0;
@@ -517,8 +517,8 @@ export class SpeedTestService {
           pingIndex++;
 
           if (pingIndex < pingCount) {
-            // Send next ping after small delay
-            setTimeout(() => sendNextPing(), 50);
+            // Send next ping immediately for fastest test completion
+            setTimeout(() => sendNextPing(), 20);
           } else {
             // All pings completed
             ws.close();
@@ -526,7 +526,7 @@ export class SpeedTestService {
             const avgPing = pings.reduce((a, b) => a + b, 0) / pings.length;
             const jitter = Math.sqrt(pings.reduce((sum, ping) => sum + Math.pow(ping - avgPing, 2), 0) / pings.length);
 
-            console.log(`WebSocket latency test completed: ${avgPing.toFixed(2)}ms avg, ${jitter.toFixed(2)}ms jitter`);
+            console.log(`WebSocket latency test completed: 10 pings in ~${(pingIndex * 20)}ms, ${avgPing.toFixed(2)}ms avg, ${jitter.toFixed(2)}ms jitter`);
 
             resolve({
               pingMs: avgPing,
@@ -561,14 +561,14 @@ export class SpeedTestService {
   }
 
   /**
-   * HTTP-based latency test fallback (15-20ms on localhost)
+   * HTTP-based latency test fallback - completes in ~500ms with 10 pings
    */
   private async performHttpLatencyTest(onProgress?: (metrics: LatencyMetrics) => void): Promise<LatencyMetrics> {
     const pingCount = 10;
     const pings: number[] = [];
     const url = `${this.baseUrl}/health`;
 
-    console.log('Starting HTTP latency test (fallback)...');
+    console.log('Starting HTTP latency test (10 pings, fallback)...');
 
     for (let i = 0; i < pingCount; i++) {
       const startTime = performance.now();
@@ -601,14 +601,14 @@ export class SpeedTestService {
         firstByteMs: currentAvgPing
       });
 
-      // Small delay between pings
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Small delay between pings for HTTP stability
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     const avgPing = pings.reduce((a, b) => a + b, 0) / pings.length;
     const jitter = Math.sqrt(pings.reduce((sum, ping) => sum + Math.pow(ping - avgPing, 2), 0) / pings.length);
 
-    console.log(`HTTP latency test completed: ${avgPing.toFixed(2)}ms avg, ${jitter.toFixed(2)}ms jitter`);
+    console.log(`HTTP latency test completed: 10 pings in ~${(pingCount * 50)}ms, ${avgPing.toFixed(2)}ms avg, ${jitter.toFixed(2)}ms jitter`);
 
     return {
       pingMs: avgPing,
