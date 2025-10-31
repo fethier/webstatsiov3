@@ -108,16 +108,7 @@ export class SpeedTestService {
     };
 
     try {
-      // Run tests based on test type
-      if (request.testType === 'FULL' || request.testType === 'LATENCY_ONLY') {
-        response.currentPhase = 'LATENCY_TEST';
-        onProgress?.(response);
-        response.latencyMetrics = await this.performLatencyTest((metrics) => {
-          response.latencyMetrics = metrics;
-          onProgress?.(response);
-        });
-      }
-
+      // Run tests based on test type (Download -> Upload -> Latency)
       if (request.testType === 'FULL' || request.testType === 'DOWNLOAD_ONLY') {
         response.currentPhase = 'DOWNLOAD_TEST';
         onProgress?.(response);
@@ -140,6 +131,15 @@ export class SpeedTestService {
             onProgress?.(response);
           }
         );
+      }
+
+      if (request.testType === 'FULL' || request.testType === 'LATENCY_ONLY') {
+        response.currentPhase = 'LATENCY_TEST';
+        onProgress?.(response);
+        response.latencyMetrics = await this.performLatencyTest((metrics) => {
+          response.latencyMetrics = metrics;
+          onProgress?.(response);
+        });
       }
 
       response.currentPhase = 'COMPLETED';
