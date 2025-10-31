@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { SpeedTestService, SpeedTestRequest, SpeedTestResponse } from '../../services/speed-test.service';
+import { LatencyWorkerService, LatencyMetrics, WorkerStatus } from '../../services/latency-worker.service';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -11,6 +12,36 @@ import { Subscription } from 'rxjs';
   imports: [CommonModule, FormsModule, RouterModule],
   template: `
     <div class="speed-test-container fullscreen-container">
+      <!-- Continuous Latency Monitor Status Bar -->
+      <div class="latency-status-bar" *ngIf="latencyMetrics || workerStatus">
+        <div class="container-fluid">
+          <div class="row align-items-center">
+            <div class="col-auto">
+              <span class="status-indicator" [class.connected]="workerStatus?.connectionState === 'connected'"
+                                             [class.connecting]="workerStatus?.connectionState === 'connecting' || workerStatus?.connectionState === 'reconnecting'"
+                                             [class.disconnected]="workerStatus?.connectionState === 'disconnected'">
+                ●
+              </span>
+            </div>
+            <div class="col">
+              <span class="status-label">Live Ping:</span>
+              <span class="status-value">{{ latencyMetrics?.pingMs ? (latencyMetrics!.pingMs | number:'1.0-0') : '--' }} ms</span>
+              <span class="status-separator">|</span>
+              <span class="status-label">Jitter:</span>
+              <span class="status-value">{{ latencyMetrics?.jitterMs ? (latencyMetrics!.jitterMs | number:'1.1-1') : '--' }} ms</span>
+              <span class="status-separator" *ngIf="latencyMetrics?.packetLossPercent">|</span>
+              <span class="status-label" *ngIf="latencyMetrics?.packetLossPercent">Loss:</span>
+              <span class="status-value" *ngIf="latencyMetrics?.packetLossPercent">{{ latencyMetrics!.packetLossPercent | number:'1.1-1' }}%</span>
+            </div>
+            <div class="col-auto">
+              <button class="btn btn-sm btn-outline-light" (click)="toggleContinuousMonitoring()">
+                {{ workerStatus?.isRunning ? 'Stop Monitor' : 'Start Monitor' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="row h-100">
         <div class="col-12 d-flex align-items-center justify-content-center">
           <div class="test-card fullscreen-card">
@@ -139,9 +170,64 @@ import { Subscription } from 'rxjs';
     </div>
   `,
   styles: [`
+    .latency-status-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      padding: 0.75rem 0;
+      z-index: 1000;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .status-indicator {
+      font-size: 1.2rem;
+      display: inline-block;
+      animation: pulse 2s infinite;
+    }
+
+    .status-indicator.connected {
+      color: #28a745;
+    }
+
+    .status-indicator.connecting {
+      color: #ffc107;
+    }
+
+    .status-indicator.disconnected {
+      color: #dc3545;
+    }
+
+    .status-label {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.9rem;
+      margin-left: 0.5rem;
+    }
+
+    .status-value {
+      color: white;
+      font-weight: bold;
+      font-size: 1rem;
+      margin-left: 0.25rem;
+    }
+
+    .status-separator {
+      color: rgba(255, 255, 255, 0.3);
+      margin: 0 0.75rem;
+    }
+
+    .btn-sm {
+      padding: 0.25rem 0.75rem;
+      font-size: 0.85rem;
+      border-radius: 0.5rem;
+    }
+
     .speed-test-container {
       min-height: 100vh;
       padding: 0;
+      padding-top: 4rem;
     }
 
     .fullscreen-container {
@@ -377,16 +463,27 @@ export class SpeedTestComponent implements OnInit, OnDestroy {
   testStatus: SpeedTestResponse | null = null;
   testResult: SpeedTestResponse | null = null;
   error: string | null = null;
-  
+
+  // Continuous latency monitoring
+  latencyMetrics: LatencyMetrics | null = null;
+  workerStatus: WorkerStatus | null = null;
+
   private pollSubscription?: Subscription;
+  private latencyMetricsSubscription?: Subscription;
+  private workerStatusSubscription?: Subscription;
 
   constructor(
     private speedTestService: SpeedTestService,
+    private latencyWorkerService: LatencyWorkerService,
     private ngZone: NgZone
   ) {}
 
   ngOnInit() {
     this.enterFullScreen();
+
+    // Start continuous latency monitoring
+    this.startContinuousMonitoring();
+
     setTimeout(() => {
       this.startTest();
     }, 1000);
@@ -396,6 +493,9 @@ export class SpeedTestComponent implements OnInit, OnDestroy {
     if (this.pollSubscription) {
       this.pollSubscription.unsubscribe();
     }
+
+    // Stop continuous monitoring and clean up subscriptions
+    this.stopContinuousMonitoring();
   }
 
   async startTest() {
@@ -535,6 +635,67 @@ export class SpeedTestComponent implements OnInit, OnDestroy {
           : '--';
       default:
         return '--';
+    }
+  }
+
+  /**
+   * Start continuous latency monitoring using Web Worker
+   */
+  startContinuousMonitoring(): void {
+    console.log('[SpeedTestComponent] Starting continuous latency monitoring');
+
+    // Subscribe to latency metrics updates
+    this.latencyMetricsSubscription = this.latencyWorkerService.metrics$.subscribe(metrics => {
+      // Update UI in NgZone to ensure change detection runs
+      this.ngZone.run(() => {
+        this.latencyMetrics = metrics;
+      });
+    });
+
+    // Subscribe to worker status updates
+    this.workerStatusSubscription = this.latencyWorkerService.status$.subscribe(status => {
+      this.ngZone.run(() => {
+        this.workerStatus = status;
+      });
+    });
+
+    // Start the worker with 1-second ping interval
+    this.latencyWorkerService.start('http://localhost:8080/api/speedtest', 1000);
+  }
+
+  /**
+   * Stop continuous latency monitoring
+   */
+  stopContinuousMonitoring(): void {
+    console.log('[SpeedTestComponent] Stopping continuous latency monitoring');
+
+    // Unsubscribe from observables
+    if (this.latencyMetricsSubscription) {
+      this.latencyMetricsSubscription.unsubscribe();
+      this.latencyMetricsSubscription = undefined;
+    }
+
+    if (this.workerStatusSubscription) {
+      this.workerStatusSubscription.unsubscribe();
+      this.workerStatusSubscription = undefined;
+    }
+
+    // Stop the worker
+    this.latencyWorkerService.stop();
+
+    // Reset state
+    this.latencyMetrics = null;
+    this.workerStatus = null;
+  }
+
+  /**
+   * Toggle continuous latency monitoring on/off
+   */
+  toggleContinuousMonitoring(): void {
+    if (this.workerStatus?.isRunning) {
+      this.stopContinuousMonitoring();
+    } else {
+      this.startContinuousMonitoring();
     }
   }
 }

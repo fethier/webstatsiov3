@@ -3,7 +3,8 @@
     "allow": [
       "Bash(dir:*)",
       "Bash(find:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(mkdir -p \"C:\\Users\\filet\\Documents\\Prog\\Java\\WebStatsIoV4(vibe)\\frontend\\src\\app\\workers\")"
     ],
     "deny": [],
     "ask": []

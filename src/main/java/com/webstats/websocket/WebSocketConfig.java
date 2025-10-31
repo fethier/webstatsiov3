@@ -17,7 +17,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(pingWebSocketHandler, "/ws/ping")
+        registry.addHandler(pingWebSocketHandler, "/api/speedtest/ws/ping")
                 .setAllowedOrigins("*"); // Allow all origins for development
     }
 }
